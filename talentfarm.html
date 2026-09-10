@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FloodAlert - Citizen Disaster Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#1e40af',
+                        danger: '#dc2626',
+                        warning: '#f59e0b',
+                        safe: '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .map-container {
+            height: 400px;
+            width:  275%;
+        }
+        #liveMap { height: 400px; width: 100%; }
+
+        .legend {
+      position: absolute;
+      down: 15px;
+      right: 15px;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+    .legend-color {
+      width: 12px; height: 12px;
+      margin-right: 8px;
+      border-radius: 50%;
+    }
+
+        .flood-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+        
+        .emergency-btn {
+            box-shadow: 0 0 15px rgba(220, 38, 38, 0.7);
+        }
+        
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Header/Navigation -->
+    <header class="bg-primary text-white shadow-lg">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-water text-2xl"></i>
+                <h1 class="text-2xl font-bold">FloodAlert</h1>
+            </div>
+            <nav class="hidden md:flex space-x-6">
+                <a href="#dashboard" class="hover:text-blue-200 transition">Dashboard</a>
+                <a href="#report" class="hover:text-blue-200 transition">Report Flood</a>
+                <a href="#resources" class="hover:text-blue-200 transition">Resources</a>
+                <a href="#community" class="hover:text-blue-200 transition">Community</a>
+            </nav>
+            <div class="flex items-center space-x-4">
+                <button id="login-btn" class="bg-secondary px-4 py-2 rounded-lg hover:bg-blue-900 transition">
+                    <i class="fas fa-user mr-2"></i>Login
+                </button>
+                <button class="md:hidden text-2xl" id="mobile-menu-btn">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu -->
+        <div class="md:hidden hidden bg-blue-900 py-4 px-4" id="mobile-menu">
+            <div class="flex flex-col space-y-3">
+                <a href="#dashboard" class="hover:text-blue-200 transition">Dashboard</a>
+                <a href="#report" class="hover:text-blue-200 transition">Report Flood</a>
+                <a href="#resources" class="hover:text-blue-200 transition">Resources</a>
+                <a href="#community" class="hover:text-blue-200 transition">Community</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="bg-gradient-to-r from-primary to-blue-700 text-white py-16">
+        <div class="container mx-auto px-4 text-center">
+            <h1 class="text-4xl md:text-5xl font-bold mb-6">Be Prepared. Stay Safe.</h1>
+            <p class="text-xl mb-8 max-w-3xl mx-auto">Your active participation can save lives during flood emergencies. Join our community-driven flood management system.</p>
+            <div class="flex flex-col md:flex-row justify-center space-y-4 md:space-y-0 md:space-x-6">
+                <button id="get-alerts-btn" class="bg-white text-primary px-8 py-3 rounded-lg font-bold hover:bg-gray-100 transition">
+                    <i class="fas fa-bell mr-2"></i>Get Alerts
+                </button>
+                <button id="volunteer-btn" class="bg-transparent border-2 border-white px-8 py-3 rounded-lg font-bold hover:bg-white hover:text-primary transition">
+                    <i class="fas fa-hands-helping mr-2"></i>Volunteer
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Dashboard -->
+    <main class="container mx-auto px-4 py-8" id="dashboard">
+        <!-- Alert Section -->
+        <div id="alert-section" class="bg-warning text-white p-4 rounded-lg mb-8 flex items-start">
+            <i class="fas fa-exclamation-triangle text-2xl mr-4 mt-1"></i>
+            <div>
+                <h3 class="font-bold text-lg">Flood Warning Active</h3>
+                <p>Heavy rainfall expected in your area within the next 24 hours. Prepare emergency kits and stay updated.</p>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div id="flood-map-btn" class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition cursor-pointer text-center">
+                <div class="bg-blue-100 text-primary p-3 rounded-full inline-block mb-3">
+                    <i class="fas fa-map-marked-alt text-2xl"></i>
+                </div>
+                <h3 class="font-bold mb-2">Flood Map</h3>
+                <p class="text-gray-600 text-sm">View real-time flood affected areas</p>
+            </div>
+            <div id="report-flood-btn" class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition cursor-pointer text-center">
+                <div class="bg-blue-100 text-primary p-3 rounded-full inline-block mb-3">
+                    <i class="fas fa-exclamation text-2xl"></i>
+                </div>
+                <h3 class="font-bold mb-2">Report Flood</h3>
+                <p class="text-gray-600 text-sm">Submit flood sightings in your area</p>
+            </div>
+            <div id="emergency-help-btn" class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition cursor-pointer text-center">
+                <div class="bg-blue-100 text-primary p-3 rounded-full inline-block mb-3">
+                    <i class="fas fa-first-aid text-2xl"></i>
+                </div>
+                <h3 class="font-bold mb-2">Emergency Help</h3>
+                <p class="text-gray-600 text-sm">Request or offer immediate assistance</p>
+            </div>
+            <div id="community-btn" class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition cursor-pointer text-center">
+                <div class="bg-blue-100 text-primary p-3 rounded-full inline-block mb-3">
+                    <i class="fas fa-users text-2xl"></i>
+                </div>
+                <h3 class="font-bold mb-2">Community</h3>
+                <p class="text-gray-600 text-sm">Connect with neighbors and volunteers</p>
+            </div>
+        </div>
+        
+        <!-- Map and Status Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <!-- Map -->
+            <div class="map-container relative">
+    <!-- Search bar -->
+    <div class="flex items-center gap-2 px-4 py-2">
+        <input id="searchBox" type="text" placeholder="Search location..." class="border rounded px-3 py-1 w-full max-w-sm" />
+        <button id="searchBtn" class="bg-blue-600 text-white px-4 py-1 rounded">Search</button>
+        <button id="clearSearch" class="bg-gray-400 text-white px-3 py-1 rounded">Clear</button>
+    </div>
+
+    <!-- The actual map -->
+    <div id="liveMap" style="height:380px;width:100%;"></div>
+
+    <!-- Legend -->
+    <div class="legend absolute bottom-4 left-4 bg-white p-2 rounded shadow-md text-sm">
+        <div class="legend-item flex items-center mb-1"><div class="legend-color w-3 h-3 mr-2 rounded-full" style="background:red"></div> Severe Flooding</div>
+        <div class="legend-item flex items-center mb-1"><div class="legend-color w-3 h-3 mr-2 rounded-full" style="background:orange"></div> Moderate Flooding</div>
+        <div class="legend-item flex items-center"><div class="legend-color w-3 h-3 mr-2 rounded-full" style="background:green"></div> Safe Area</div>
+    </div>
+</div>
+
+                    <!-- Flood markers would be added here with JavaScript -->
+                    <div class="absolute down-2 right-2 bg-white p-3 rounded-lg shadow-md">
+                        <button id="add-report-btn" class="bg-primary text-white px-4 py-2 rounded-lg flex items-center">
+                            <i class="fas fa-plus mr-2"></i> Add Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Status Updates -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="p-4 border-b">
+                    <h2 class="font-bold text-lg flex items-center">
+                        <i class="fas fa-bell text-primary mr-2"></i>
+                        Recent Alerts
+                    </h2>
+                </div>
+                <div class="p-4 space-y-4 max-h-96 overflow-y-auto">
+                    <div class="border-l-4 border-danger pl-4 py-2 alert-item">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold">Severe Flood Warning</h3>
+                            <span class="text-xs text-gray-500">10 min ago</span>
+                        </div>
+                        <p class="text-sm text-gray-600">River levels rising rapidly in downtown area. Evacuation recommended.</p>
+                    </div>
+                    <div class="border-l-4 border-warning pl-4 py-2 alert-item">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold">Road Closure</h3>
+                            <span class="text-xs text-gray-500">45 min ago</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Main Street closed due to water accumulation. Use alternate routes.</p>
+                    </div>
+                    <div class="border-l-4 border-primary pl-4 py-2 alert-item">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold">Shelter Open</h3>
+                            <span class="text-xs text-gray-500">2 hours ago</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Navajeevan Bala Bhavan is a 24×7 open shelter and offers  food, counselling, and non-formal education.</p>
+                    </div>
+                    <div class="border-l-4 border-safe pl-4 py-2 alert-item">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold">Volunteers Needed</h3>
+                            <span class="text-xs text-gray-500">3 hours ago</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Help needed with sandbagging at Singh Nagar. Equipment provided.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Report Flood Section -->
+        <section class="bg-white rounded-lg shadow-md overflow-hidden mb-8" id="report">
+            <div class="p-4 border-b">
+                <h2 class="font-bold text-lg flex items-center">
+                    <i class="fas fa-exclamation-circle text-primary mr-2"></i>
+                    Report Flood Conditions
+                </h2>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="font-bold mb-4">Quick Report</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center space-x-4">
+                                <button id="water-rising-btn" class="flex-1 bg-blue-100 text-primary p-3 rounded-lg border-2 border-blue-200 hover:bg-blue-200 transition flex flex-col items-center">
+                                    <i class="fas fa-water text-2xl mb-2"></i>
+                                    <span>Water Rising</span>
+                                </button>
+                                <button id="road-flooded-btn" class="flex-1 bg-blue-100 text-primary p-3 rounded-lg border-2 border-blue-200 hover:bg-blue-200 transition flex flex-col items-center">
+                                    <i class="fas fa-road text-2xl mb-2"></i>
+                                    <span>Road Flooded</span>
+                                </button>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <button id="property-damage-btn" class="flex-1 bg-blue-100 text-primary p-3 rounded-lg border-2 border-blue-200 hover:bg-blue-200 transition flex flex-col items-center">
+                                    <i class="fas fa-home text-2xl mb-2"></i>
+                                    <span>Property Damage</span>
+                                </button>
+                                <button id="need-rescue-btn" class="flex-1 bg-blue-100 text-primary p-3 rounded-lg border-2 border-blue-200 hover:bg-blue-200 transition flex flex-col items-center">
+                                    <i class="fas fa-person-booth text-2xl mb-2"></i>
+                                    <span>Need Rescue</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-bold mb-4">Detailed Report</h3>
+                        <form id="detailed-report-form">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Location</label>
+                                <input type="text" id="report-location" class="w-full p-2 border rounded-lg" placeholder="Address or drag map pin" required>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Severity</label>
+                                <div class="flex space-x-2">
+                                    <button type="button" id="severity-low" class="flex-1 bg-blue-100 text-primary p-2 rounded-lg border border-blue-200 severity-btn">Low</button>
+                                    <button type="button" id="severity-medium" class="flex-1 bg-yellow-100 text-warning p-2 rounded-lg border border-yellow-200 severity-btn">Medium</button>
+                                    <button type="button" id="severity-high" class="flex-1 bg-red-100 text-danger p-2 rounded-lg border border-red-200 severity-btn">High</button>
+                                </div>
+                                <input type="hidden" id="severity-value" value="">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Description</label>
+                                <textarea id="report-description" class="w-full p-2 border rounded-lg" rows="3" placeholder="Provide details about the flood conditions" required></textarea>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Upload Photo (Optional)</label>
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center" id="photo-upload">
+                                    <i class="fas fa-camera text-2xl text-gray-400 mb-2"></i>
+                                    <p class="text-gray-500">Drag & drop or click to upload</p>
+                                    <input type="file" id="report-photo" class="hidden" accept="image/*">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-primary text-white p-3 rounded-lg hover:bg-blue-700 transition">
+                                Submit Report
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Emergency Resources -->
+        <section class="bg-white rounded-lg shadow-md overflow-hidden mb-8" id="resources">
+            <div class="p-4 border-b">
+                <h2 class="font-bold text-lg flex items-center">
+                    <i class="fas fa-first-aid text-primary mr-2"></i>
+                    Emergency Resources
+                </h2>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="border rounded-lg overflow-hidden hover:shadow-lg transition">
+                        <div class="bg-blue-100 p-4">
+                            <h3 class="font-bold text-lg flex items-center">
+                                <i class="fas fa-medkit text-danger mr-2"></i>
+                                Medical Help
+                            </h3>
+                        </div>
+                        <div class="p-4">
+                            <ul class="space-y-2">
+                                <li class="flex items-center">
+                                    <i class="fas fa-hospital text-primary mr-2"></i>
+                                    <span>City General Hospital: 2.5 miles</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-ambulance text-danger mr-2"></i>
+                                    <span>Emergency: 102</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-user-md text-primary mr-2"></i>
+                                    <span>24/7 Telemedicine</span>
+                                </li>
+                            </ul>
+                            <button id="medical-help-btn" class="mt-4 w-full bg-danger text-white p-2 rounded-lg hover:bg-red-700 transition">
+                                Request Medical Help
+                            </button>
+                        </div>
+                    </div>
+                    <div class="border rounded-lg overflow-hidden hover:shadow-lg transition">
+                        <div class="bg-blue-100 p-4">
+                            <h3 class="font-bold text-lg flex items-center">
+                                <i class="fas fa-utensils text-warning mr-2"></i>
+                                Food & Supplies
+                            </h3>
+                        </div>
+                        <div class="p-4">
+                            <ul class="space-y-2">
+                                <li class="flex items-center">
+                                    <i class="fas fa-warehouse text-primary mr-2"></i>
+                                    <span>Community Center: 1.2 miles</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-truck text-warning mr-2"></i>
+                                    <span>Supply Delivery Available</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-water text-primary mr-2"></i>
+                                    <span>Clean Water Stations</span>
+                                </li>
+                            </ul>
+                            <button id="supplies-btn" class="mt-4 w-full bg-warning text-white p-2 rounded-lg hover:bg-yellow-700 transition">
+                                Request Supplies
+                            </button>
+                        </div>
+                    </div>
+                    <div class="border rounded-lg overflow-hidden hover:shadow-lg transition">
+                        <div class="bg-blue-100 p-4">
+                            <h3 class="font-bold text-lg flex items-center">
+                                <i class="fas fa-home text-primary mr-2"></i>
+                                Shelter & Housing
+                            </h3>
+                        </div>
+                        <div class="p-4">
+                            <ul class="space-y-2">
+                                <li class="flex items-center">
+                                    <i class="fas fa-school text-primary mr-2"></i>
+                                    <span>Lincoln High School: 3.1 miles</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-hotel text-primary mr-2"></i>
+                                    <span>Partner Hotels (Discounted)</span>
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-hands-helping text-primary mr-2"></i>
+                                    <span>Host Families Available</span>
+                                </li>
+                            </ul>
+                            <button id="shelter-btn" class="mt-4 w-full bg-primary text-white p-2 rounded-lg hover:bg-blue-700 transition">
+                                Find Shelter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Community Section -->
+        <section class="bg-white rounded-lg shadow-md overflow-hidden mb-8" id="community">
+            <div class="p-4 border-b">
+                <h2 class="font-bold text-lg flex items-center">
+                    <i class="fas fa-users text-primary mr-2"></i>
+                    Community Hub
+                </h2>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <h3 class="font-bold mb-4">Live Community Feed</h3>
+                        <div class="space-y-4 max-h-96 overflow-y-auto pr-2" id="community-feed">
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-start mb-3">
+                                    <div class="bg-blue-100 text-primary w-10 h-10 rounded-full flex items-center justify-center mr-3">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">John D.</h4>
+                                        <p class="text-gray-500 text-sm">15 min ago · 1.2 miles away</p>
+                                    </div>
+                                </div>
+                                <p class="mb-3">Water levels rising quickly on Maple Street. Already knee-deep in front of #123. Avoid the area if possible.</p>
+                                <div class="flex items-center text-sm">
+                                    <button class="like-btn text-primary mr-4">
+                                        <i class="far fa-thumbs-up mr-1"></i> <span class="like-count">12</span>
+                                    </button>
+                                    <button class="comment-btn text-primary mr-4">
+                                        <i class="far fa-comment mr-1"></i> <span class="comment-count">3</span>
+                                    </button>
+                                    <button class="share-btn text-primary">
+                                        <i class="fas fa-share mr-1"></i> Share
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-start mb-3">
+                                    <div class="bg-blue-100 text-primary w-10 h-10 rounded-full flex items-center justify-center mr-3">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">City Emergency Services</h4>
+                                        <p class="text-gray-500 text-sm">35 min ago · Official</p>
+                                    </div>
+                                </div>
+                                <p class="mb-3">Rescue boats deployed in the following areas: Downtown, Riverside, and Maple District. If you need evacuation, call 911 or use the emergency button in the app.</p>
+                                <div class="bg-blue-50 p-3 rounded-lg mb-3">
+                                    <div class="flex items-center text-danger">
+                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                        <span class="font-bold">Emergency Notice</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center text-sm">
+                                    <button class="like-btn text-primary mr-4">
+                                        <i class="far fa-thumbs-up mr-1"></i> <span class="like-count">42</span>
+                                    </button>
+                                    <button class="comment-btn text-primary mr-4">
+                                        <i class="far fa-comment mr-1"></i> <span class="comment-count">7</span>
+                                    </button>
+                                    <button class="share-btn text-primary">
+                                        <i class="fas fa-share mr-1"></i> Share
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="border rounded-lg p-4">
+                                <div class="flex items-start mb-3">
+                                    <div class="bg-blue-100 text-primary w-10 h-10 rounded-full flex items-center justify-center mr-3">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Sarah M.</h4>
+                                        <p class="text-gray-500 text-sm">1 hour ago · 0.8 miles away</p>
+                                    </div>
+                                </div>
+                                <p class="mb-3">We have extra space in our home on Oak Street if anyone needs temporary shelter. Can accommodate 2-3 people. DM me for details.</p>
+                                <div class="flex items-center text-sm">
+                                    <button class="like-btn text-primary mr-4">
+                                        <i class="far fa-thumbs-up mr-1"></i> <span class="like-count">24</span>
+                                    </button>
+                                    <button class="comment-btn text-primary mr-4">
+                                        <i class="far fa-comment mr-1"></i> <span class="comment-count">5</span>
+                                    </button>
+                                    <button class="share-btn text-primary">
+                                        <i class="fas fa-share mr-1"></i> Share
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 border rounded-lg p-4">
+                            <div class="flex items-start">
+                                <div class="bg-blue-100 text-primary w-10 h-10 rounded-full flex items-center justify-center mr-3">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <textarea id="community-post" class="w-full p-2 border rounded-lg mb-2" rows="2" placeholder="Share updates with your community..."></textarea>
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex space-x-2">
+                                            <button id="add-photo-btn" class="text-gray-500">
+                                                <i class="fas fa-camera"></i>
+                                            </button>
+                                            <button id="add-location-btn" class="text-gray-500">
+                                                <i class="fas fa-map-marker-alt"></i>
+                                            </button>
+                                        </div>
+                                        <button id="post-btn" class="bg-primary text-white px-4 py-1 rounded-lg">
+                                            Post
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-bold mb-4">Volunteer Opportunities</h3>
+                        <div class="space-y-4" id="volunteer-opportunities">
+                            <div class="border rounded-lg p-4 hover:shadow-md transition cursor-pointer volunteer-card">
+                                <div class="flex items-start">
+                                    <div class="bg-blue-100 text-primary p-2 rounded-lg mr-3">
+                                        <i class="fas fa-hands-helping"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Sandbagging Crew</h4>
+                                        <p class="text-sm text-gray-600 mb-2">Riverside Park - Today 2PM</p>
+                                        <div class="flex items-center text-sm">
+                                            <span class="bg-blue-100 text-primary px-2 py-1 rounded-full text-xs">Physical</span>
+                                            <span class="mx-2 text-gray-400">•</span>
+                                            <span>12 volunteers needed</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="border rounded-lg p-4 hover:shadow-md transition cursor-pointer volunteer-card">
+                                <div class="flex items-start">
+                                    <div class="bg-blue-100 text-primary p-2 rounded-lg mr-3">
+                                        <i class="fas fa-utensils"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Food Distribution</h4>
+                                        <p class="text-sm text-gray-600 mb-2">Community Center - Ongoing</p>
+                                        <div class="flex items-center text-sm">
+                                            <span class="bg-blue-100 text-primary px-2 py-1 rounded-full text-xs">All Ages</span>
+                                            <span class="mx-2 text-gray-400">•</span>
+                                            <span>8 volunteers needed</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="border rounded-lg p-4 hover:shadow-md transition cursor-pointer volunteer-card">
+                                <div class="flex items-start">
+                                    <div class="bg-blue-100 text-primary p-2 rounded-lg mr-3">
+                                        <i class="fas fa-car"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Supply Delivery</h4>
+                                        <p class="text-sm text-gray-600 mb-2">Various Locations - Flexible</p>
+                                        <div class="flex items-center text-sm">
+                                            <span class="bg-blue-100 text-primary px-2 py-1 rounded-full text-xs">Drivers</span>
+                                            <span class="mx-2 text-gray-400">•</span>
+                                            <span>5 volunteers needed</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="border rounded-lg p-4 hover:shadow-md transition cursor-pointer volunteer-card">
+                                <div class="flex items-start">
+                                    <div class="bg-blue-100 text-primary p-2 rounded-lg mr-3">
+                                        <i class="fas fa-headset"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Hotline Support</h4>
+                                        <p class="text-sm text-gray-600 mb-2">Remote - Shifts Available</p>
+                                        <div class="flex items-center text-sm">
+                                            <span class="bg-blue-100 text-primary px-2 py-1 rounded-full text-xs">Remote</span>
+                                            <span class="mx-2 text-gray-400">•</span>
+                                            <span>10 volunteers needed</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button id="view-all-btn" class="w-full mt-4 bg-primary text-white p-2 rounded-lg hover:bg-blue-700 transition">
+                            View All Opportunities
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Emergency Button (Fixed) -->
+        <div class="fixed bottom-6 right-6">
+            <button id="emergency-btn" class="emergency-btn bg-danger text-white w-16 h-16 rounded-full flex items-center justify-center text-2xl animate-pulse">
+                <i class="fas fa-exclamation"></i>
+            </button>
+        </div>
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <h3 class="font-bold text-lg mb-4 flex items-center">
+                        <i class="fas fa-water mr-2"></i> FloodAlert
+                    </h3>
+                    <p class="text-gray-400">Community-powered flood management system helping citizens stay safe and connected during emergencies.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold mb-4">Quick Links</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Home</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Flood Map</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Emergency Contacts</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Preparedness Guide</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-bold mb-4">Resources</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Emergency Kits</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Evacuation Routes</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Flood Insurance</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition">Recovery Assistance</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-bold mb-4">Connect</h4>
+                    <div class="flex space-x-4 mb-4">
+                        <a href="#" class="bg-gray-700 w-10 h-10 rounded-full flex items-center justify-center hover:bg-primary transition">
+                            <i class="fab fa-facebook-f"></i>
+                        </a>
+                        <a href="#" class="bg-gray-700 w-10 h-10 rounded-full flex items-center justify-center hover:bg-blue-400 transition">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="bg-gray-700 w-10 h-10 rounded-full flex items-center justify-center hover:bg-danger transition">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                    </div>
+                    <p class="text-gray-400">Download our mobile app:</p>
+                    <div class="flex space-x-2 mt-2">
+                        <button id="app-store-btn" class="bg-black text-white px-3 py-1 rounded-lg text-sm flex items-center">
+                            <i class="fab fa-apple mr-1"></i> App Store
+                        </button>
+                        <button id="play-store-btn" class="bg-black text-white px-3 py-1 rounded-lg text-sm flex items-center">
+                            <i class="fab fa-google-play mr-1"></i> Play Store
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
+                <p>&copy; 2023 FloodAlert. All rights reserved. | <a href="#" class="hover:text-white transition">Privacy Policy</a> | <a href="#" class="hover:text-white transition">Terms of Service</a></p>
+            </div>
+        </div>
+    </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+    const map = L.map('liveMap');
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+        const toRad = angle => (angle * Math.PI) / 180;
+        const R = 6371;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                  Math.sin(dLon / 2) ** 2;
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    const reports = [
+        { lat: 28.6139, lng: 77.2090, severity: 'danger', message: 'Severe Flooding in Delhi' },
+        { lat: 19.0760, lng: 72.8777, severity: 'warning', message: 'Moderate Flooding in Mumbai' },
+        { lat: 13.0827, lng: 80.2707, severity: 'safe', message: 'Chennai is Safe' },
+        { lat: 17.3850, lng: 78.4867, severity: 'danger', message: 'Severe Flooding in Hyderabad' },
+        { lat: 22.5726, lng: 88.3639, severity: 'warning', message: 'Water levels rising in Kolkata' },
+        { lat: 12.9716, lng: 77.5946, severity: 'safe', message: 'Bangalore area is currently safe' },
+        { lat: 26.8467, lng: 80.9462, severity: 'warning', message: 'Lucknow reports moderate flooding' }
+    ];
+
+    navigator.geolocation.getCurrentPosition(position => {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        map.setView([userLat, userLng], 10);
+
+        L.marker([userLat, userLng]).addTo(map)
+          .bindPopup("<b>Your Location</b>")
+          .openPopup();
+
+        reports.forEach(report => {
+            const distance = getDistance(userLat, userLng, report.lat, report.lng);
+            if (distance <= 100) {
+                const color = report.severity === 'danger' ? 'red' :
+                              report.severity === 'warning' ? 'orange' : 'green';
+                L.circleMarker([report.lat, report.lng], {
+                    radius: 10,
+                    color,
+                    fillColor: color,
+                    fillOpacity: 0.7
+                }).addTo(map)
+                  .bindPopup(`<strong>${report.message}</strong><br><small>${Math.round(distance)} km away</small>`);
+            }
+        });
+    }, () => {
+        alert('Could not get your location. Showing default map.');
+        map.setView([20.5937, 78.9629], 5);
+    });
+
+    document.getElementById('searchBtn').addEventListener('click', () => {
+        const query = document.getElementById('searchBox').value.trim();
+        if (!query) return;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.length > 0) {
+              const lat = parseFloat(data[0].lat);
+              const lon = parseFloat(data[0].lon);
+              map.setView([lat, lon], 12);
+              L.marker([lat, lon]).addTo(map)
+                .bindPopup(`<b>${query}</b>`)
+                .openPopup();
+            } else {
+              alert('Location not found');
+            }
+          });
+    });
+
+    document.getElementById('clearSearch').addEventListener('click', () => {
+        document.getElementById('searchBox').value = '';
+    });
+});
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show';
+            
+            // Set color based on type
+            if (type === 'success') {
+                toast.style.backgroundColor = '#10b981';
+            } else if (type === 'error') {
+                toast.style.backgroundColor = '#dc2626';
+            } else if (type === 'warning') {
+                toast.style.backgroundColor = '#f59e0b';
+            } else {
+                toast.style.backgroundColor = '#333';
+            }
+            
+            setTimeout(() => {
+                toast.className = 'toast';
+            }, 3000);
+        }
+
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-btn').addEventListener('click', function() {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        });
+        
+        // Simulate loading progress
+        document.addEventListener('DOMContentLoaded', function() {
+            const progressBar = document.createElement('div');
+            progressBar.className = 'fixed top-0 left-0 h-1 bg-primary progress-bar';
+            progressBar.style.width = '0%';
+            document.body.appendChild(progressBar);
+            
+            let width = 0;
+            const interval = setInterval(function() {
+                width += 10;
+                progressBar.style.width = width + '%';
+                if (width >= 100) {
+                    clearInterval(interval);
+                    setTimeout(function() {
+                        progressBar.style.opacity = '0';
+                        setTimeout(function() {
+                            progressBar.remove();
+                        }, 300);
+                    }, 300);
+                }
+            }, 100);
+            
+            // Emergency button alert
+            document.getElementById('emergency-btn').addEventListener('click', function() {
+                if (confirm('Are you in immediate danger? This will alert emergency services to your location.')) {
+                    showToast('Emergency services have been notified. Help is on the way.', 'error');
+                }
+            });
+            
+            // Simulate flood reports on map
+            setTimeout(function() {
+                const mapContainer = document.querySelector('.map-container');
+                const floodMarkers = [
+                    { top: '30%', left: '25%', severity: 'danger' },
+                    { top: '45%', left: '60%', severity: 'danger' },
+                    { top: '20%', left: '70%', severity: 'warning' },
+                    { top: '65%', left: '40%', severity: 'warning' },
+                    { top: '50%', left: '15%', severity: 'safe' }
+                ];
+                
+                floodMarkers.forEach(marker => {
+                    const markerElement = document.createElement('div');
+                    markerElement.className = `absolute w-6 h-6 rounded-full flood-animation ${marker.severity === 'danger' ? 'bg-danger' : marker.severity === 'warning' ? 'bg-warning' : 'bg-safe'}`;
+                    markerElement.style.top = marker.top;
+                    markerElement.style.left = marker.left;
+                    markerElement.title = marker.severity === 'danger' ? 'Severe Flooding' : marker.severity === 'warning' ? 'Moderate Flooding' : 'Safe Area';
+                    mapContainer.appendChild(markerElement);
+                });
+            }, 1500);
+            
+            // Quick action buttons
+            document.getElementById('flood-map-btn').addEventListener('click', function() {
+                showToast('Opening flood map...');
+                document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            document.getElementById('report-flood-btn').addEventListener('click', function() {
+                showToast('Opening flood report form...');
+                document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            document.getElementById('emergency-help-btn').addEventListener('click', function() {
+                showToast('Opening emergency help section...');
+                document.getElementById('resources').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            document.getElementById('community-btn').addEventListener('click', function() {
+                showToast('Opening community hub...');
+                document.getElementById('community').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            // Hero section buttons
+            document.getElementById('get-alerts-btn').addEventListener('click', function() {
+                showToast('You will now receive flood alerts via SMS and email', 'success');
+            });
+            
+            document.getElementById('volunteer-btn').addEventListener('click', function() {
+                showToast('Opening volunteer registration form...');
+                document.getElementById('community').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            // Login button
+             document.getElementById('login-btn').addEventListener('click', function() {
+                window.location.href = 'flog.html'; 
+            });
+            
+            // Add report button on map
+            document.getElementById('add-report-btn').addEventListener('click', function() {
+                showToast('Opening flood report form...');
+                document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+            });
+            
+            // Quick report buttons
+            document.getElementById('water-rising-btn').addEventListener('click', function() {
+                showToast('Water rising report submitted. Authorities have been notified.', 'success');
+            });
+            
+            document.getElementById('road-flooded-btn').addEventListener('click', function() {
+                showToast('Road flooded report submitted. Authorities have been notified.', 'success');
+            });
+            
+            document.getElementById('property-damage-btn').addEventListener('click', function() {
+                showToast('Property damage report submitted. Authorities have been notified.', 'success');
+            });
+            
+            document.getElementById('need-rescue-btn').addEventListener('click', function() {
+                if (confirm('Are you in immediate danger and need rescue?')) {
+                    showToast('Rescue request submitted. Emergency services have been alerted!', 'error');
+                }
+            });
+            
+            // Severity selection
+            const severityButtons = document.querySelectorAll('.severity-btn');
+            severityButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    severityButtons.forEach(btn => {
+                        btn.classList.remove('border-2', 'border-blue-500');
+                        btn.classList.add('border');
+                    });
+                    
+                    // Add active class to clicked button
+                    this.classList.remove('border');
+                    this.classList.add('border-2', 'border-blue-500');
+                    
+                    // Set severity value
+                    const severity = this.id.split('-')[1];
+                    document.getElementById('severity-value').value = severity;
+                });
+            });
+            
+            // Detailed report form submission
+            document.getElementById('detailed-report-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const location = document.getElementById('report-location').value;
+                const severity = document.getElementById('severity-value').value;
+                const description = document.getElementById('report-description').value;
+                
+                if (!severity) {
+                    showToast('Please select a severity level', 'warning');
+                    return;
+                }
+                
+                showToast(`Flood report submitted for ${location}. Thank you!`, 'success');
+                this.reset();
+                
+                // Reset severity buttons
+                severityButtons.forEach(btn => {
+                    btn.classList.remove('border-2', 'border-blue-500');
+                    btn.classList.add('border');
+                });
+                document.getElementById('severity-value').value = '';
+            });
+            
+            // Photo upload
+            document.getElementById('photo-upload').addEventListener('click', function() {
+                document.getElementById('report-photo').click();
+            });
+            
+            document.getElementById('report-photo').addEventListener('change', function() {
+                if (this.files.length > 0) {
+                    showToast('Photo uploaded successfully', 'success');
+                }
+            });
+            
+            // Emergency resource buttons
+            document.getElementById('medical-help-btn').addEventListener('click', function() {
+                if (confirm('Do you need immediate medical assistance?')) {
+                    showToast('Medical help request submitted. A responder will contact you shortly.', 'error');
+                }
+            });
+            
+            document.getElementById('supplies-btn').addEventListener('click', function() {
+                showToast('Opening supply request form...');
+            });
+            
+            document.getElementById('shelter-btn').addEventListener('click', function() {
+                showToast('Searching for available shelters near you...');
+            });
+            
+            // Community interactions
+            document.querySelectorAll('.like-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const countElement = this.querySelector('.like-count');
+                    let count = parseInt(countElement.textContent);
+                    count++;
+                    countElement.textContent = count;
+                    
+                    if (!this.classList.contains('liked')) {
+                        this.innerHTML = '<i class="fas fa-thumbs-up mr-1"></i> ' + count;
+                        this.classList.add('liked');
+                        showToast('You liked this post', 'success');
+                    } else {
+                        this.innerHTML = '<i class="far fa-thumbs-up mr-1"></i> ' + count;
+                        this.classList.remove('liked');
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.comment-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const comment = prompt('Enter your comment:');
+                    if (comment) {
+                        const countElement = this.querySelector('.comment-count');
+                        let count = parseInt(countElement.textContent);
+                        count++;
+                        countElement.textContent = count;
+                        showToast('Comment added', 'success');
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.share-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    showToast('Post shared to your network', 'success');
+                });
+            });
+            
+            // Community post
+            document.getElementById('post-btn').addEventListener('click', function() {
+                const postText = document.getElementById('community-post').value;
+                if (postText.trim() === '') {
+                    showToast('Please enter some text for your post', 'warning');
+                    return;
+                }
+                
+                const feed = document.getElementById('community-feed');
+                const newPost = document.createElement('div');
+                newPost.className = 'border rounded-lg p-4';
+                newPost.innerHTML = `
+                    <div class="flex items-start mb-3">
+                        <div class="bg-blue-100 text-primary w-10 h-10 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold">You</h4>
+                            <p class="text-gray-500 text-sm">Just now · Nearby</p>
+                        </div>
+                    </div>
+                    <p class="mb-3">${postText}</p>
+                    <div class="flex items-center text-sm">
+                        <button class="like-btn text-primary mr-4">
+                            <i class="far fa-thumbs-up mr-1"></i> <span class="like-count">0</span>
+                        </button>
+                        <button class="comment-btn text-primary mr-4">
+                            <i class="far fa-comment mr-1"></i> <span class="comment-count">0</span>
+                        </button>
+                        <button class="share-btn text-primary">
+                            <i class="fas fa-share mr-1"></i> Share
+                        </button>
+                    </div>
+                `;
+                
+                feed.insertBefore(newPost, feed.firstChild);
+                document.getElementById('community-post').value = '';
+                showToast('Post published to community feed', 'success');
+                
+                // Add event listeners to new buttons
+                newPost.querySelector('.like-btn').addEventListener('click', function() {
+                    const countElement = this.querySelector('.like-count');
+                    let count = parseInt(countElement.textContent);
+                    count++;
+                    countElement.textContent = count;
+                    
+                    if (!this.classList.contains('liked')) {
+                        this.innerHTML = '<i class="fas fa-thumbs-up mr-1"></i> ' + count;
+                        this.classList.add('liked');
+                        showToast('You liked this post', 'success');
+                    } else {
+                        this.innerHTML = '<i class="far fa-thumbs-up mr-1"></i> ' + count;
+                        this.classList.remove('liked');
+                    }
+                });
+                
+                newPost.querySelector('.comment-btn').addEventListener('click', function() {
+                    const comment = prompt('Enter your comment:');
+                    if (comment) {
+                        const countElement = this.querySelector('.comment-count');
+                        let count = parseInt(countElement.textContent);
+                        count++;
+                        countElement.textContent = count;
+                        showToast('Comment added', 'success');
+                    }
+                });
+                
+                newPost.querySelector('.share-btn').addEventListener('click', function() {
+                    showToast('Post shared to your network', 'success');
+                });
+            });
+            
+            // Volunteer opportunities
+            document.querySelectorAll('.volunteer-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const title = this.querySelector('h4').textContent;
+                    showToast(`Signing up for: ${title}`, 'success');
+                });
+            });
+            
+            document.getElementById('view-all-btn').addEventListener('click', function() {
+                showToast('Loading all volunteer opportunities...');
+            });
+            
+            // Footer buttons
+            document.getElementById('app-store-btn').addEventListener('click', function() {
+                showToast('Redirecting to App Store...');
+            });
+            
+            document.getElementById('play-store-btn').addEventListener('click', function() {
+                showToast('Redirecting to Play Store...');
+            });
+            
+            // Alert items
+            document.querySelectorAll('.alert-item').forEach(alert => {
+                alert.addEventListener('click', function() {
+                    const title = this.querySelector('h3').textContent;
+                    showToast(`Viewing details for: ${title}`);
+                });
+            });
+            
+            // Add photo button in community post
+            document.getElementById('add-photo-btn').addEventListener('click', function() {
+                showToast('Photo upload feature coming soon!', 'warning');
+            });
+            
+            // Add location button in community post
+            document.getElementById('add-location-btn').addEventListener('click', function() {
+                showToast('Location tagging feature coming soon!', 'warning');
+            });
+        });
+    </script>
+
+</body>
+</html>
